@@ -14,7 +14,7 @@ use vars qw( @ISA @EXPORT $VERSION );
 @EXPORT = qw(  adConvert adTie adRows adColumn adExport adDump adNames adFormats);
 #@EXPORT = qw(  ad_fields adTable adErr adArray);
 
-$VERSION = '0.09';
+$VERSION = '0.10';
 
 sub new {
    my $class   = shift;
@@ -620,7 +620,6 @@ sub adConvert {
        $data_type = 'ARRAY'  if  ref $source_data eq 'ARRAY'
                             and  ref $source_data->[0] eq 'ARRAY';
 
-
     # INIT SOURCE OBJECT
     my $source_ad;
     if ($source_format eq 'adHash') {
@@ -650,29 +649,19 @@ sub adConvert {
         my $target_ad = adTable(
             $target_format,$target_file_name,'o',undef,$target_flags
         );
-#        if (ref $source_data) {
         if ($data_type eq 'ARRAY' ) {
-            for my $row(@$source_data) {
-#               $target_ad->push_row(@$row);
-             my @rec;
-             if (ref $row eq 'ARRAY') {
-                  @rec = @$row;
-	      }
-              else {
-                  @rec = $source_ad->{parser}->read_fields($row);
-	      }
-              $target_ad->push_row(@rec);
-#
-            }
-            return $target_ad->export($target_file_name);
+             for my $row(@$source_data) {
+                 my @fields=$source_ad->str2ary($row);
+                 $target_ad->push_row( $source_ad->str2ary(\@fields) );
+             }
+             unshift @$source_data, \@cols;
+             return $target_ad->export($target_file_name);
         }
         $source_ad->seek_first_record;
-#        while (my $row = $source_ad->fetch_row) {
         while (my $row = $source_ad->get_undeleted_record) {
-            $target_ad->push_row(@$row);
+            $target_ad->push_row( $source_ad->str2ary($row) );
         }
         return $target_ad->export($target_file_name);
-        #print $target_ad->export;
     }
 
     my($target_ad,$fh);
@@ -708,22 +697,24 @@ sub adConvert {
     # GET DATA
     if ($data_type eq 'ARRAY') {
       for my $row(@$source_data) {
-        my $tmpstr = $target_ad->{parser}->write_fields(@$row);
+        my @fields = $source_ad->str2ary($row);
+        my $tmpstr = $target_ad->{parser}->write_fields(@fields);
         # print $tmpstr if $check;
         $fh->write($tmpstr,length $tmpstr) if $target_type eq 'FILE';
         $str .=  $tmpstr if $target_type eq 'STRING';
       }
+      unshift @$source_data, \@cols;
       return $str if $target_format ne 'ARRAY';
       return $aryref;
     }
-    $source_ad->seek_first_record unless $source_format eq 'XML';
+    $source_ad->seek_first_record; # unless $source_format eq 'XML';
     while (my $row = $source_ad->get_undeleted_record) {
-#    while (my $row = $source_ad->fetch_row) {
         if ($target_format eq 'ARRAY') {
             push @$aryref,$row if $target_format eq 'ARRAY';
             next;
         }
-        my $tmpstr = $target_ad->{parser}->write_fields(@$row);
+        my @fields = $source_ad->str2ary($row);
+        my $tmpstr = $target_ad->{parser}->write_fields(@fields);
         $str .= $target_type eq 'FILE'
            ? $fh->write($tmpstr,length $tmpstr)
            : $tmpstr;
@@ -752,6 +743,11 @@ sub adConvert {
 #        return $target_ad->{parser}->export($data,$target_file_name);
 #  }
 
+sub str2ary {
+    my($ad,$row) = @_;
+    return @$row if ref $row eq 'ARRAY';
+    return $ad->{parser}->read_fields($row);
+}
 sub ad_string {
     my($formatref,@fields) = @_;
     my($format,$flags) = split_params($formatref);

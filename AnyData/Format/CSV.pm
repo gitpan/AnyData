@@ -11,7 +11,7 @@ package AnyData::Format::CSV;
 =head1 SYNOPSIS
 
  use AnyData;
- my $table = adHash( 'CSV', $filename,'r',$flags );
+ my $table = adTable( 'CSV', $filename,'r',$flags );
  while (my $row = each %$table) {
     print $row->{name},"\n" if $row->{country} =~ /us|mx|ca/;
  }
