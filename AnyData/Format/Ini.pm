@@ -44,8 +44,10 @@ all rights reserved
 
 use AnyData::Format::CSV;
 use strict;
-use vars qw/@ISA/;
+use vars qw/@ISA $VERSION/;
 @ISA = qw(AnyData::Format::CSV);
+
+$VERSION = '0.05';
 
 
 sub new {

@@ -84,8 +84,10 @@ all rights reserved
 use strict;
 use AnyData::Format::Base;
 use AnyData::Storage::File;
-use vars qw( @ISA );
+use vars qw( @ISA $VERSION);
 @AnyData::Format::HTMLtable::ISA = qw( AnyData::Format::Base );
+
+$VERSION = '0.05';
 
 sub new {
     my $class = shift;
@@ -107,7 +109,7 @@ sub get_data {
     my $self = shift;
     my $str       = shift or return undef;
     my $col_names = shift;
-    use HTML::TableExtract;
+    require HTML::TableExtract;
     my $count   = $self->{count} || 0;
     my $depth   = $self->{depth} || 0;
     my $headers = $self->{headers} || $self->{col_names} || undef;

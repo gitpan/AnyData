@@ -14,7 +14,7 @@ use vars qw( @ISA @EXPORT $VERSION );
 @EXPORT = qw(  adConvert adTie adRows adColumn adExport adDump adNames adFormats);
 #@EXPORT = qw(  ad_fields adTable adErr adArray);
 
-$VERSION = '0.04';
+$VERSION = '0.05';
 
 sub new {
    my $class   = shift;
@@ -144,15 +144,47 @@ sub prep_dbd_table {
 sub fetch_row   {
     my $self   = shift;
     my $requested_cols = shift || [];
-    my $rec    = $self->{storage}->file2str($self->{parser},$requested_cols);
+    my $rec;
+    if ( $self->{parser}->{skip_pattern} ) {
+        my $found;
+        while (!$found) {
+            $rec = $self->{storage}->file2str($self->{parser},$requested_cols);
+            last if !defined $rec;
+            next if $rec =~ $self->{parser}->{skip_pattern};
+            last;
+	}
+    }
+    else {
+        $rec = $self->{storage}->file2str($self->{parser},$requested_cols);
+    }
     return $rec if ref $rec eq 'ARRAY';
-#next mod
-#    if (!$self->{parser}->{skip_blank_lines}) {
-           return unless $rec;
-#next mod
-#    } 
+    return unless $rec;
     my @fields = $self->{parser}->read_fields($rec);
     return undef if scalar @fields == 1 and !defined $fields[0];
+    return \@fields;
+}
+sub fetch_rowNEW   {
+    my $self   = shift;
+    my $requested_cols = shift || [];
+    my $rec    = $self->{storage}->file2str($self->{parser},$requested_cols);
+    my @fields;
+    if (ref $rec eq 'ARRAY') {
+        @fields = @$rec;
+    } 
+    else {
+        return unless defined $rec;
+        my @fields = $self->{parser}->read_fields($rec);
+        return undef if scalar @fields == 1 and !defined $fields[0];
+    }
+    if ( my $subs = $self->{parser}->{read_sub} ) {
+        for (@$subs) {
+            my($col,$sub) =  @$_;
+            next unless defined $col;
+            my $col_num = $self->{storage}->{col_nums}->{$col};
+            next unless defined $col_num;
+            $fields[$col_num] = &$sub($fields[$col_num]);
+	}
+      }
     return \@fields;
 }
 sub push_names {
@@ -180,6 +212,20 @@ sub push_row {
     die "ERROR: No Column Names!" unless scalar @{$self->col_names};
     my $requested_cols = [];
     my @row = @_;
+    if (ref($row[0]) eq 'ARRAY') {
+        $requested_cols = shift @row;
+    }
+    my $rec = $self->{parser}->write_fields(@row) or return undef;
+    return $self->{storage}->push_row( $rec, $self->{parser}, $requested_cols);
+}
+sub push_rowNEW {
+    my $self = shift;
+    #print "PUSHING... ";
+    die "ERROR: No Column Names!" unless scalar @{$self->col_names};
+    my $requested_cols = [];
+    my @row = @_;
+    use Data::Dumper;
+    #print "PUSHING ", Dumper \@row;
     if (ref($row[0]) eq 'ARRAY') {
         $requested_cols = shift @row;
     }
@@ -237,6 +283,7 @@ sub adTable {
       } 
       else {
          $flags->{recs} = join '',@$file;
+         $flags->{recs} = $file if $format =~ /ARRAY/i;
          $flags->{storage} = 'RAM' unless $format eq 'XML';
          $read_mode = 'u';
       }
@@ -293,10 +340,10 @@ sub key_col          { shift->{parser}->{key} }
 sub fetchrow_hashref {
     my $self = shift;
     my $rec = $self->get_undeleted_record or return undef;
+    my  @fields = ref $rec eq 'ARRAY'
+            ? @$rec
+            : $self->{parser}->read_fields($rec);
     my $col_names = $self->col_names();
-    my @fields = ref $rec eq 'ARRAY'
-        ? @$rec
-        : $self->{parser}->read_fields($rec);
     return undef unless scalar @fields;
     return undef if scalar @fields == 1 and !defined $fields[0];
     my $rowhash;
@@ -311,9 +358,9 @@ sub get_undeleted_record {
     while (!$found) {
         my $test = $rec    = $self->{storage}->file2str($self->{parser});
         return  if !defined $rec;
-        $test = $rec->[-1] if ref $rec eq 'ARRAY';
-        my $mark = quotemeta($self->{storage}->{del_marker});
-        next if $test and $test =~ /$mark$/;
+        next if $self->{storage}->is_deleted($self->{parser});
+        next if $self->{parser}->{skip_pattern} 
+            and $rec =~ $self->{parser}->{skip_pattern};
         last;
     }
     return $rec;
@@ -377,12 +424,16 @@ sub is_matched {
         return $str =~ /$re/ ? 1 : 0;
     }
     my($op,$val);
-    if ( $re =~/^(\S*)\s+(.*)/ ) {
+    
+    if ( $re and $re =~/^(\S*)\s+(.*)/ ) {
         $op  = $1;
         $val = $2;
     }
-    else {
+    elsif ($re) {
         return $str =~ /$re/ ? 1 : 0;
+    }
+    else {
+        return $str eq '' ? 1 : 0;
     }
     my $numop = '< > == != <= >=';
     my $chrop = 'lt gt eq ne le ge';
@@ -404,9 +455,9 @@ sub is_matched {
 }
 sub delete_single_row {
     my $self = shift;
-    my $curpos = $self->{storage}->get_pos;
+#    my $curpos = $self->{storage}->get_pos;
     $self->{storage}->delete_record($self->{parser});
-    $self->{storage}->go_pos($curpos);
+#    $self->{storage}->go_pos($curpos);
     $self->{needs_packing}++;
 }
 sub delete_multiple_rows {
@@ -471,7 +522,10 @@ sub zpack {
     my $self = shift;
     return if $self->{storage}->{no_pack};
     return if (ref $self->{storage} ) !~ /File$/;
-    return unless $self->{needs_packing};
+
+#    return unless $self->{needs_packing};
+#    $self->{needs_packing} = 0;
+    return unless scalar(keys %{ $self->{storage}->{deleted} } );
     $self->{needs_packing} = 0;
     #    my @callA = caller 2;
     #    my @callB = caller 3;
@@ -503,6 +557,7 @@ sub zpack {
     $fh->close;
     $bak_fh->close;
     $self->{doing_pack} = 0;
+    undef $self->{storage}->{deleted};
 }
 
 ##########################################################
@@ -537,7 +592,7 @@ sub adErr {
 }
 sub adExport {
     my $tiedhash  = shift;
-    my($tformat,$tfile,$sflags,$tflags)=@_;
+    my($tformat,$tfile,$tflags)=@_;
     my $ad = tied(%$tiedhash)->{ad};
     my $sformat = ref $ad->{parser};
     $sformat =~ s/AnyData::Format:://;
@@ -545,7 +600,7 @@ sub adExport {
     if ($tformat eq $sformat and $tformat eq 'XML') {
       return $ad->{parser}->export($ad->{storage},$tfile,$tflags);
     }
-    return adConvert('adHash',$ad,$tformat,$tfile,$sflags,$tflags);
+    return adConvert('adHash',$ad,$tformat,$tfile,undef,$tflags);
 }
 sub adConvert {
     my( $source_format, $source_data,
@@ -597,7 +652,8 @@ sub adConvert {
             return $target_ad->export($target_file_name);
         }
         $source_ad->seek_first_record;
-        while (my $row = $source_ad->fetch_row) {
+#        while (my $row = $source_ad->fetch_row) {
+        while (my $row = $source_ad->get_undeleted_record) {
             $target_ad->push_row(@$row);
         }
         return $target_ad->export($target_file_name);
@@ -646,7 +702,8 @@ sub adConvert {
       return $aryref;
     }
     $source_ad->seek_first_record unless $source_format eq 'XML';
-    while (my $row = $source_ad->fetch_row) {
+    while (my $row = $source_ad->get_undeleted_record) {
+#    while (my $row = $source_ad->fetch_row) {
         if ($target_format eq 'ARRAY') {
             push @$aryref,$row if $target_format eq 'ARRAY';
             next;
@@ -1343,6 +1400,10 @@ deletion:
 
  2. delete adTie('Pipe','games.db','u')->{"user$_"} for (0..3);
     # no undef needed since no hash variable created
+
+=head2 Deletions and Packing
+
+In order to save time and to prevent having to do writes anywhere except at the end of the file, deletions and updates are *not* done at the time of issuing a delete command.  Rather when the user does a delete, the position of the deleted record is stored in a hash and when the file is saved to disk, the deletions are only then physically removed by packing the entire database.  Updates are done by inserting the new record at the end of the file and marking the old record for deletion.  In the normal course of events, all of this should be transparent and you'll never need to worry about it.  However, if your server goes down after you've made updates or deletions but before you've saved the file, then the deleted rows will remain in the database and for updates there will be duplicate rows -- the old unpdated row and the new updated row.  If you are worried about this kind of event, then use atomic deletes and updates as shown in the section above.  There's still a very small possiblity of a crash in between the deletion and the save, but in this case it should impact at most a single row.  (BIG thanks to Matthew Wickline for suggestions on handling deletes)
 
 =head1 MORE HELP
 

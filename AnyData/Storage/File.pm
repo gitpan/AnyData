@@ -38,52 +38,26 @@ my $open_table_re =
 sub open_local_file {
     my( $self,$file, $open_mode ) = @_;
     my $dir = $self->{f_dir} || './';
-    my($fname,$path,$foo) = fileparse($file);
+    my($fname,$path) = fileparse($file);
     my($foo2,$os_cur_dir) = fileparse('');
-    my $haspath=0;
-    $haspath = 1 if $path and $path ne $os_cur_dir;
-    #print ">>> $haspath ~~ $path ~~ $os_cur_dir -- $file --\n";
+    my $haspath = 1 if $path and $path ne $os_cur_dir;
     if (!$haspath && $file !~ /^$open_table_re/o) {
-	$file = HAS_FILE_SPEC ?
-	    File::Spec->catfile($dir, $file)
+	$file = HAS_FILE_SPEC
+                ? File::Spec->catfile($dir, $file)
 		: $dir . "/$file";
     }
     my $fh;
     $open_mode ||= 'r';
- #   $open_mode = $self->{open_mode} if $self->{open_mode};
-=pod 
-my @c = caller 1;
-print $open_mode;
-print $c[3],"\n";
-@c = caller 2;
-print $open_mode;
-print $c[3],"\n";
-@c = caller 3;
-print $open_mode;
-print $c[3],"\n";
-@c = caller 4;
-print $open_mode;
-print $c[3],"\n\n";
-#print $self->{open_mode} if $self->{open_mode};
-#print "$file $open_mode";
-#die $open_mode;
-=cut
     my %valid_mode = (
-        r  => q/read       read an existing file/,
-        u  => q/update     read & modify an existing file/,
-        c  => q/create     create a new file, fail if it already exists/,
-        o  => q/overwrite  create a new file, overwrite if it already exists/,
+    r  => q/read       read an existing file, fail if already exists/,
+    u  => q/update     read & modify an existing file, fail if already exists/,
+    c  => q/create     create a new file, fail if it already exists/,
+    o  => q/overwrite  create a new file, overwrite if it already exists/,
     );
     my %mode = (
        r   => O_RDONLY,
        u   => O_RDWR,
        c   => O_CREAT | O_RDWR | O_EXCL,
-       o   => O_CREAT | O_RDWR | O_TRUNC
-    );
-    my %mode_OLD = (
-       r   => 'r',
-       u   => 'r+',
-       c   => 'a+',
        o   => O_CREAT | O_RDWR | O_TRUNC
     );
     my $help = qq(
@@ -132,6 +106,7 @@ print $c[3],"\n\n";
 	    }
 	}
     }
+    print "OPENING $file, mode = '$open_mode'\n" if $DEBUG;
     return( $file, $fh, $open_mode) if wantarray;
     return( $fh );
 }
@@ -241,15 +216,9 @@ sub get_record {
     my($self,$parser)=@_;
     local $/ =  $parser->{record_sep} || "\n";
     my $fh =  $self->{fh} ;
-#    my @c = caller 2; die $c[3];
-    #use Data::Dumper; die Dumper $parser;
-#die if $parser->{record_sep} eq "\015\012\015\012";
-#    local $/ = "\015\012\015\012";
     my $record = $fh->getline || return undef;
     $record =~ s/\015$//g;
     $record =~ s/\012$//g;
-#print "<$record>";
-#print "[[$record]]" if (ref $parser) =~ /CSV/;
     return $record;
 }
 
@@ -258,7 +227,6 @@ sub set_col_nums {
     my $col_names = $self->{col_names};
     return {} unless $col_names;
     my $col_nums={}; my $i=0;
-    #my @c = caller 1; print $c[3];
     for (@$col_names) { 
         next unless $_;
         $col_nums->{$col_names->[$i]} = $i;
@@ -288,7 +256,7 @@ sub push_row {
     my $self  = shift;
     my $rec   = shift;
     my $fh = $self->{fh};
-    #####!!!!####    $fh->seek(0,2) or die $!;
+    #####!!!! DON'T USE THIS ####    $fh->seek(0,2) or die $!;
     $fh->write($rec,length $rec)
          || die "Couldn't write to file: $!\n";
 }
@@ -297,15 +265,18 @@ sub delete_record {
     my $self  = shift;
     my $parser  = shift || {};
     my $fh = $self->{fh};
-    #$fh->write('Z',1);
-    my $travel =  $parser->{record_sep} || 0;
-    $travel = length($travel) + length($self->{del_marker});
-    $fh->seek(-$travel,1) or die $!;
-    $fh->write($self->{del_marker},length $self->{del_marker})
-         || die "Couldn't write to file: $!\n";
-    $self->{needs_packing}++;
+    my $travel =  length($parser->{record_sep}) || 0;
+    my $pos = $fh->tell - $travel;
+    $self->{deleted}->{$pos}++;
 }
-
+sub is_deleted {
+    my $self  = shift;
+    my $parser  = shift || {};
+    my $fh = $self->{fh};
+    my $travel =  length($parser->{record_sep}) || 0;
+    my $pos = $fh->tell - $travel;
+    return $self->{deleted}->{$pos};
+}
 sub seek {
     my($self, $pos, $whence) = @_;
     if ($whence == 0  &&  $pos == 0) {
@@ -321,11 +292,8 @@ sub seek {
 
 sub DESTROY {
   my $self = shift;
-  #print "DESTROY File"; (in destroy order: TiedHash,AnyData,File)
-  #$self->zpack if $self->{needs_packing};
   my $fh = $self->{fh};
   print "CLOSING ", $self->get_file_name, "\n" if $fh && $DEBUG;
   $fh->close if $fh;
 }
 __END__
-

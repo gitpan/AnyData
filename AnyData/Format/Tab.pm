@@ -52,8 +52,10 @@ all rights reserved
 
 use strict;
 use AnyData::Format::CSV;
-use vars qw( @ISA );
+use vars qw( @ISA $VERSION );
 @AnyData::Format::Tab::ISA = qw( AnyData::Format::CSV );
+
+$VERSION = '0.05';
 
 sub new {
     my $class = shift;

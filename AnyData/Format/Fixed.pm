@@ -43,8 +43,10 @@ all rights reserved
 
 use strict;
 use AnyData::Format::Base;
-use vars qw( @ISA );
+use vars qw( @ISA $VERSION);
 @AnyData::Format::Fixed::ISA = qw( AnyData::Format::Base );
+
+$VERSION = '0.05';
 
 sub read_fields {
     my $self = shift;

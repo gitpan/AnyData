@@ -12,9 +12,9 @@ AnyData::Format::Weblog - tiedhash & DBI/SQL access to HTTPD Logs
 =head1 SYNOPSIS
 
  use AnyData;
- my $weblog = adHash( 'Weblog', $filename );
+ my $weblog = adTie( 'Weblog', $filename );
  while (my $hit = each %$weblog) {
-    print $hit->{ip},"\n" if $hit->{request} =~ /mypage.html/;
+    print $hit->{remotehost},"\n" if $hit->{request} =~ /mypage.html/;
  }
  # ... other tied hash operations
 
@@ -62,9 +62,11 @@ all rights reserved
 
 use strict;
 use AnyData::Format::Base;
-use vars qw( @ISA $DEBUG);
+use vars qw( @ISA $DEBUG $VERSION);
 @AnyData::Format::Weblog::ISA = qw( AnyData::Format::Base );
 $DEBUG = 0;
+
+$VERSION = '0.05';
 
 sub new {
     my $class = shift;
@@ -85,7 +87,7 @@ sub read_fields {
     $str =~ s/\s+$//;
     return undef unless $str;
     my(@row) = $str =~
-        /^(\S*) (\S*) (\S*) \[([^\]]*)\] "([^"]*)" (\S*) (\S*)\s*(.*)$/;
+        /^(\S*) (\S*) (\S*) \[([^\]]*)\] "(.*)" (\S*) (\S*)\s*(.*)$/;
     return undef unless defined $row[0];
     my($client,$referer) = $row[7] =~ /^(.*) (\S*)$/;
     $client  ||= '';

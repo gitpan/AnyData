@@ -56,6 +56,7 @@ use AnyData::Format::CSV;
 use vars qw( @ISA $VERSION);
 @AnyData::Format::Passwd::ISA = qw( AnyData::Format::CSV );
 
+$VERSION = '0.05';
 
 sub new {
     my $class = shift;

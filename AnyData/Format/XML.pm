@@ -5,13 +5,14 @@ package AnyData::Format::XML;
 # by Jeff Zucker <jeff@vpservices.com>
 ##################################################################
 
-
 use strict;
 use AnyData::Format::Base;
 use AnyData::Storage::RAM;
 use XML::Twig;
-use vars qw( @ISA  $DEBUG);
+use vars qw( @ISA  $DEBUG $VERSION);
 @AnyData::Format::XML::ISA = qw( AnyData::Format::Base );
+
+$VERSION = '0.05';
 
 sub seek    { 1 }
 sub get_pos { 1 }
@@ -47,7 +48,7 @@ sub push_row {
     my $hash_caller = $ch[3] || '';
     my $dbd_caller  = $cd[3] || '';
     my @f  = caller 4;
-    if ($dbd_caller ) {
+    if ($dbd_caller =~ /SQL/ ) {
         # DELETE | UPDATE | INSERT
         if ( !$self->{last_before_delete} && $dbd_caller !~ /INSERT/ ) {
             $self->{last_before_delete} =  1;
@@ -58,161 +59,82 @@ sub push_row {
                  $e->set_gi("delete__")
      	    }
      	}
+        #$self->{twig}->print; exit;
         return $self->insert_record(\@fields);
     }
-    my $last;
-    $hash_caller =~ /UPDATE/i  && !$dbd_caller =~ /DELETE/
-        ? return $self->update_record(\@fields)
-	: return $self->insert_record(\@fields);
-}
-
-sub push_rowNEW {
-    my $self = shift;
-    my @fields  = @_;
-    my @ch = caller 3;          # tied-hash
-    my @cd = caller 4;          # DBD
-    my $hash_caller = $ch[3] || '';
-    my $dbd_caller  = $cd[3] || '';
-    my @f  = caller 4;
-    if ($dbd_caller ) {
-        # DELETE | UPDATE | INSERT
-        if ( !$self->{last_before_delete} && $dbd_caller !~ /INSERT/ ) {
-            $self->{last_before_delete} =  1;
-            my @children = $self->{twig}->root->descendants;
-            for my $e(@children) {
-                 next unless $e->path eq $self->{record_tag}->path;
-                 next if $e->cmp($self->{record_tag}) == 0;
-                 $e->set_gi("delete__")
-     	    }
-     	}
-        return $self->insert_record(\@fields);
-     }
-    my $last;
-    if ($dbd_caller =~ /DELETE|UPDATE/i && !$self->{last_before_delete}) {
-        $self->{last_before_delete} =  $self->{twig}->root->last_child;
-    $hash_caller =~ /UPDATE/i  && !$dbd_caller =~ /DELETE/
-        ? $self->update_record(\@fields)
-	: $self->insert_record(\@fields);
-    if ($dbd_caller =~ /DELETE/i) {
-        my @children = $self->{twig}->root->descendants;
-        my $new_rec = $self->{record_tag}->copy;
-        my $new_par = $self->{record_tag}->parent;
-        for my $e(@children) {
-             next unless $e->path eq $self->{record_tag}->path;
-#             next if $e->cmp($self->{record_tag}) == 0;
-#            next unless $e->first_child and defined $e->first_child->text
-#                    and $e->first_child->text eq $self->{del_marker};
-    #         print $e->path,"\n";
-    #        $e->delete;
-	}
-#        $new_rec->paste('first_child',$new_par);
-#        $self->{record_tag} = $new_par->first_child;
-        #die $self->{twig}->print;
-    }
-    }
-}
-
-sub push_rowOLD {
-    my $self = shift;
-    my @fields  = @_;
-#die ref @fields;
-#print Dumper \@fields;
-    my @ch = caller 3;          # tied-hash
-    my @cd = caller 4;          # DBD
-    my $hash_caller = $ch[3] || '';
-    my $dbd_caller  = $cd[3] || '';
-    my @f  = caller 4;
-#    if ($dbd_caller =~ /INSERT/i) { $self->{insert_mode}=1; }
-#print "{$hash_caller}";
-    #return if $dbd_caller =~ /INSERT/;
-    my $last;
-    if ($dbd_caller =~ /DELETE|UPDATE/i && !$self->{last_before_delete}) {
-        $self->{last_before_delete} =  $self->{twig}->root->last_child;
-###        $self->{last_before_delete} =  $self->{record_tag}->last_child;
-        #print "DELETING ... ";
-#        my @children = $self->{twig}->root->children;
-#        for my $e(@children) {
-#            next if $e->is_text;
-#             # $e->first_child->set_content($self->{del_marker});
-#             $last = $e;
-#	}
-#        $self->{last_before_delete} ||= $last;
-    }
-#die Dumper @fields;
-    $hash_caller =~ /UPDATE/i  && !$dbd_caller =~ /DELETE/
-        ? $self->update_record(\@fields)
-	: $self->insert_record(\@fields);
-    #print $stmt,$dbd_caller;
-    #return if $stmt eq 'DELETE' && $dbd_caller =~ /DELETE/;
-    if ($dbd_caller =~ /DELETE/i) {
-        my @children = $self->{twig}->root->children;
-        for my $e(@children) {
-            next unless $e->first_child and defined $e->first_child->text
-                    and $e->first_child->text eq $self->{del_marker};
-            $e->delete;
-	}
-    }
+    $self->insert_record(\@fields);
 }
 
 sub insert_record {
     my $self = shift;
     my $row  = shift;
+#print "@$row\n";
     my $rect          = $self->{record_tag};
     my $col_structure = $self->{col_structure};
-    my $cols;
-    @$cols = map {$_} @{$col_structure->{col_names}};
-    my $atts          = $col_structure->{amap};
-    my $elt= new XML::Twig::Elt($rect->gi);
+    my @tags  = @{$col_structure->{col_names}};
+    my @cols  = @{$col_structure->{pretty_cols}};
+    my $is_atr  = $col_structure->{amap};
+    my $p = $rect->path;
+    my $has_parent_atr;
+    for my $atr(keys %$is_atr) {
+        $has_parent_atr++ unless $atr =~ /^$p/;
+    }
+    my $col2tag   = $col_structure->{col2tag} || {};
+
+    my $elt= new XML::Twig::Elt($rect->gi);           # CREATE ELEMENT
+    my $par;
+    my $par_name = $rect->parent->gi;
+    if ($has_parent_atr) {
+       $par = new XML::Twig::Elt($rect->parent->gi);  # CREATE PARENT
+     }
     my $rowhash;
-    @{$rowhash}{@$cols} = @$row;
-    my $p = $rect->path . '/';
-    for my $a(keys %$atts ) {
-        $a =~ s".*/([^/]+)$"$1";
-#        next unless defined $rect->att($a) and $rowhash->{$p.$a};
-        next unless $rowhash->{$p.$a};
-        $elt->set_att($a,$rowhash->{$p.$a});
+    @{$rowhash}{@cols} = @$row;
+    for my $i(0..$#cols) {
+       my $tag   = $tags[$i];
+       my $col   = $cols[$i];
+       my $value = $rowhash->{$col};
+       $tag ||=  $col2tag->{$col};
+       my($path,$name) = $tag =~ m!^(.*)/([^/]*)$!;
+       if ($is_atr->{$tag} && defined $value) {
+         if ($tag =~ /^$p/) {
+          $elt->set_att($name,$value);             # ADD ELT ATTRIBUTE
+	 } 
+         else {
+          $par->set_att($name,$value);         # ADD PARENT ATTRIBUTE
+	 }
+       }
+       elsif (defined $name && defined $value) {
+           my $kid= new XML::Twig::Elt($name);     # CREATE CHILD
+           $kid->set_text($value);                 # ADD TEXT TO CHILD
+           $kid->paste('last_child',$elt);         # PASTE CHILD INTO ELEMENT
+       }
     }
-    my $num=-1;
-    my $mapped;
-    for my $c(@$cols ) {
-        my $orgc = $c;
-        next if $atts->{$c};
-        my $is_multi;
-        $mapped =$col_structure->{map}->{$c};
-        $is_multi++ if $col_structure->{multi}->{$mapped};
-        if ($is_multi) {
-            $num++;
-            $c = $orgc;
-	}
-        $mapped =~ s".*/([^/]+)$"$1";
-        $c =~ s".*/([^/]+)$"$1";
-        ####next unless $rowhash->{$p.$c};
-        next unless $rowhash->{$orgc};
-        my $e= new XML::Twig::Elt($mapped);
-        ###$e->set_text($rowhash->{$p.$c});
-        $e->set_text($rowhash->{$orgc});
-        $e->paste('last_child',$elt);
+    if ($has_parent_atr) {
+          $elt->paste('last_child',$par);          # PASTE ELT INTO PARENT
+          my $last = $rect->parent->parent->last_child($par_name);
+          $par->paste('after',$last);              # PASTE PARENT INTO TREE
     }
-    if ($rect->parent->parent) {
-      my $par= new XML::Twig::Elt($rect->parent->gi);
-      $p = $rect->parent->path . '/';
-      for my $a(keys %$atts ) {
-          $a =~ s".*/([^/]+)$"$1";
-          next unless defined $rect->parent->att($a) && $rowhash->{$p.$a};
-          $par->set_att($a,$rowhash->{$p.$a});
-      }
-      $elt->paste('first_child',$par);
-      my $last_rec = $rect->parent->parent->last_child($rect->parent->gi);
-      #die $last_rec->path;
-      $par->paste('after',$last_rec);
-    } 
     else {
-      my $last_rec = $rect->parent->last_child($rect->gi);
-      $elt->paste('after',$last_rec);
-#      $elt->paste('last_child',$rect->parent);
+        my $last = $rect->parent->last_child($rect->gi);
+        $elt->paste('after',$last);                 # PASTE ELEMENT INTO TREE
     }
-    #$par->print;
-    #$self->{twig}->print; exit;
+    #$self->{twig}->print;
+}
+
+sub delete_record {
+    #my @calls = caller 3;
+    #my $call  = $calls[3] || '';
+    #return if $call =~ /UPDATE/i;
+    #print "$call\n";
+    my $self = shift;
+    my $elt  = $self->{prev_element};
+    my $rec  = $self->{record_tag};
+    my $p  = $rec->path;
+     my $new = $elt->prev_elt($rec->gi);
+    $elt = $new if $elt->path !~ /^$p/;
+    $self->{skip} = 1 if !$elt;
+    return undef unless $elt;
+    $elt->delete;
 }
 
 sub DESTROY {
@@ -227,218 +149,70 @@ sub DESTROY {
     #undef $self->{twig};
     #undef $self->{storage}->{fh};
 }
-sub update_record {
-    my $self  = shift;
-    my $row   = shift;
-    my $elt   = shift;
-    my $is_insert = 1 if defined $elt;
-    $elt  ||= $self->{current_element};
-    $elt = (defined $elt and !$is_insert)
-         ? $elt->prev_sibling
-         : $self->{twig}->root->last_child;
-    my %visited;
-    my $cols  = $self->{col_structure}->{col_names};
-    my $amap  = $self->{col_structure}->{amap};
-    my $multi = $self->{col_structure}->{multi};
-    my @tags  = $elt->descendants;
-    my $newrow;
-    @{$newrow}{@$cols} = @$row;
-    unshift @tags, $elt;
-    for my $tag( @tags ) {
-        my $name  = $tag->path;
-        $name =~ s"^(.*)/#P*CDATA$"$1";
-        my $atts = $amap->{$name};
-        if (defined $atts) {
-	  for my $att(@$atts) {
-              my $natt = $att;
-              $natt =~ s"^.*/+([^/]*)$"$1"; #"
-              $tag->set_att($natt,$newrow->{$att});
-	  }
-	}
-        if (!$multi->{$name} ) {
-            $tag->set_cdata($newrow->{$name}) if $tag->is_cdata;
-            $tag->set_pcdata($newrow->{$name}) if $tag->is_pcdata;
-	  if ($is_insert and !defined $newrow->{$name} and $tag->is_text) {
-              $tag->delete;
-	  }
-	}
-        if ($multi->{$name}) {
-          my @multi_vals;
-	  for my $i(0..scalar $multi->{$name}) {
-               next if $tag->is_text;
-               my $val = $newrow->{$name.$i};
-               next unless defined $val;
-               next if $visited{$val};
-               push @multi_vals, $val;
-              $visited{$val}=1;
-	  }
-          $tag->delete;
-          my $sname = $name;
-          $sname =~ s"^.*/+([^/]*)$"$1";
-          for my $val(@multi_vals) {
-            #next if !$tag->is_text;
-            next unless defined $val;
-            my $ne = new XML::Twig::Elt($sname,$val);
-            #print "[",$ne->sprint,"]";
-            $ne->paste('last_child',$elt);
-
-	  }
-	}
-    }
-}
-
-sub update_recordOLD {
-    my $self  = shift;
-    my $row   = shift;
-    my $elt   = shift;
-return;
-    my $is_insert = 1 if defined $elt;
-    $elt  ||= $self->{current_element};
-    $elt = (defined $elt and !$is_insert)
-         ? $elt->prev_sibling
-         : $self->{twig}->root->last_child;
-    my %visited;
-    my $cols  = $self->{col_structure}->{col_names};
-    my $amap  = $self->{col_structure}->{amap};
-    my $multi = $self->{col_structure}->{multi};
-    my @tags  = $elt->descendants;
-    my $newrow;
-    @{$newrow}{@$cols} = @$row;
-    unshift @tags, $elt;
-    for my $tag( @tags ) {
-        my $name  = $tag->path;
-        $name =~ s"^(.*)/#P*CDATA$"$1";
-        my $atts = $amap->{$name};
-        if (defined $atts) {
-	  for my $att(@$atts) {
-              my $natt = $att;
-              $natt =~ s"^.*/+([^/]*)$"$1"; #"
-              $tag->set_att($natt,$newrow->{$att});
-	  }
-	}
-        if (!$multi->{$name} ) {
-            $tag->set_cdata($newrow->{$name}) if $tag->is_cdata;
-            $tag->set_pcdata($newrow->{$name}) if $tag->is_pcdata;
-	  if ($is_insert and !defined $newrow->{$name} and $tag->is_text) {
-              $tag->delete;
-	  }
-	}
-        if ($multi->{$name}) {
-          my @multi_vals;
-	  for my $i(0..scalar $multi->{$name}) {
-               next if $tag->is_text;
-               my $val = $newrow->{$name.$i};
-               next unless defined $val;
-               next if $visited{$val};
-               push @multi_vals, $val;
-              $visited{$val}=1;
-	  }
-          $tag->delete;
-          my $sname = $name;
-          $sname =~ s"^.*/+([^/]*)$"$1";
-          for my $val(@multi_vals) {
-            #next if !$tag->is_text;
-            next unless defined $val;
-            my $ne = new XML::Twig::Elt($sname,$val);
-            #print "[",$ne->sprint,"]";
-            $ne->paste('last_child',$elt);
-
-	  }
-	}
-    }
-}
-
-sub delete_record {
-    my $self = shift;
-    my $elt  = $self->{prev_element};
-    my $rec  = $self->{record_tag};
-    my $p  = $rec->path;
-   my $new = $elt->prev_elt($rec->gi);
- #  $new = $elt->parent->prev_elt($rec->gi) if $new;
-#   $new = $elt->parent->prev_elt($rec->gi) if $new;
-#   $new = $new->prev_elt($rec->gi) if $new;
-#   print $elt->path,"\n" if $self->{skip};
-  # return undef if $elt->path !~ /^$p/;
-   $elt = $new if $elt->path !~ /^$p/;
- #  $elt ||= $new;
-    $self->{skip} = 1 if !$elt;
-    #print "FFFRIP" if !$elt;
-    return undef unless $elt;
-    #$elt->print;
-    #print $elt->path,"\n" if $elt;
-    $elt->delete;
-}
 
 sub read_fields {
     my $self = shift;
-    my $jump;
-    my $thing = shift;  # (garbage, returned by Storage/XML
     my $c = $self->{current_element};
-    my $r = $self->{record_tag}->path;
-    #print $c->path if $c;
-    #$self->{jump} =1 unless defined $c;
     return undef unless defined $c;
     $c = $self->{current_element} = $c->next_elt($c->gi)
          if $c->att('record_tag__');
     $self->{prev_element} = $self->{current_element};
-        # unless $self->{current_element}->path !~ /^$r/;
-    # $self->{prev_element} ||= $c->prev_elt($c->gi);
-    #$self->{jump} =0;
-    my($row,$tags,$element,$current) = $self->process_element(
-        $self->{current_element},
-        $self->{depth_limit},
-    );
-    $c = $c->next_elt($c->gi) if $c;
-    $self->{current_element} = $c;
-    my $newvals = rowhash_to_array( $row, $self->{col_structure} );
-    my @atts;
-#    for my $t($element->ancestors) {
-    if ($element and $element->parent and $element->parent->parent) {
-    for my $t($element->parent,$element) {
-           my $ats = $t->atts;
-           next if $ats->{'record_tag__'};
-           push @atts, $ats->{$_} for keys %$ats;
-           #unshift @$newvals, $ats->{$_} for keys %$ats;
-    }
-    }
-    $newvals->[$_] = $atts[$_] for (0..$#atts);
-#print @{$self->{col_names}},"\n";
-#print "@$newvals";
-    #$self->{cur_state}++ if $jump;
-    #print $self->{prev_element}->atts->{id}," " if $self->{prev_element}->atts;
-  #  print $self->{current_element}->atts->{id}," " if $self->{current_element};
-    my $x = $self->{prev_element}->path if $self->{prev_element};
-    my $y = $self->{current_element}->path if $self->{current_element};
-    $x ||= '';
-    $y ||= '';
-    #printf "%s--%s\n", Dumper $y, Dumper $x;
-    return @$newvals;
+    $self->{current_element} = $c->next_elt($c->gi) if $c;
+    return $self->process_element( $self->{prev_element} );
 }
+
+sub process_element {
+    my $self = shift;
+    my $element   = shift;
+    my @col_names  = @{ $self->{col_structure}->{col_names} };
+    my @row;
+    my $parent = $element->parent;
+    my $values = { $element->path => $element->text };
+    my $par_ats = {};
+       $par_ats = $parent->atts if $parent;
+    my $elt_ats = $element->atts || {};
+    while( my($att_key,$att_val) = each %$par_ats) {
+        $values->{$parent->path.'/'.$att_key} = $att_val;
+    }
+    while( my($att_key,$att_val) = each %$elt_ats) {
+        $values->{$element->path.'/'.$att_key} = $att_val;
+    }
+    for my $kid($element->children) {
+        if ( defined $values->{$kid->path} ) {
+ 	    if (!ref $values->{$kid->path}) {
+               $values->{$kid->path} = [ $values->{$kid->path} ] ;
+	    }
+            push ( @{ $values->{$kid->path} }, $kid->text );
+        } 
+        else {
+	  $values->{$kid->path} = $kid->text;
+	}
+    }
+    for my $col(@col_names) {
+        if (ref $values->{$col}) {
+           @row = (@row,@{$values->{$col}});
+        }
+        else {
+           push @row, $values->{$col};
+	}
+
+    }
+    # use Data::Dumper; print Dumper $values, Dumper \@row; exit;
+    return  @row;
+}
+
+
 sub seek_first_record {
     my $self = shift;
     return unless $self->{twig} and $self->{twig}->root;
-my $e = $self->{current_element} = $self->{twig}->root->first_child;
-$e = $self->{current_element} = $self->{twig}->root;
-$e = $self->{current_element} = $self->{record_tag};
-
-###zold $e = $e->next_elt($e->gi);
-#$e = $self->{current_element} = $e->next_elt($e->gi);
-###z end#
-
-#print $e->att('id');
-#    if ($e->text =~ /^__dummy__/ && defined $e->next_sibling) {
-#        $self->{current_element} = $e->next_sibling;
-#        $e->delete;
-#    }
-#$self->{twig}->print;
-#print Dumper $self->{col_structure};
+    $self->{current_element} = $self->{record_tag};
 }
 sub push_names {
     my $self      = shift;
     my $col_names = shift || $self->{col_names};
-#my @c= caller 1; die $c[3]."!!!";
+    #my @c= caller 1; die $c[3]."!!!";
     my $str = "<table>\n  <row record_tag__='1'>\n";
-#print "CREATING";
+    #print "CREATING";
     for (@$col_names) {
         $str .= "    <$_>dummy__</$_>\n";
     }
@@ -451,17 +225,10 @@ sub push_names {
        $str .= "\n\n<$root></$root>";
        #die $str;
     }
-#die $str;
-#    $self->create_new_twig;
-#$self->{twig}->print;
-#exit;
-#die @$col_names;
     $self->get_data( $str );
-#exit;
-#    $self->{current_element} = $self->{twig}->root;
-#    $storage->{col_names} = $self->{col_names};
     return $self->{col_names};
 }
+
 sub import { 
     my $self = shift; 
     my $data = shift; 
@@ -469,6 +236,10 @@ sub import {
     $self->init_parser($storage,$data); 
     return $self->get_data($data,$storage->{col_names});
 }
+
+####
+# GET DATA FROM STRING
+###
 sub init_parser {
     my $self    = shift;
     my $storage = shift;
@@ -498,6 +269,7 @@ sub create_new_twig {
 #    $flags->{twig_flags}->{TwigRoots} = {$root_tag=>'1'} if $root_tag;
 #    $flags->{twig_flags}->{KeepEncoding}     ||= 1;
 #    $flags->{twig_flags}->{ProtocolEncoding} ||= 'ISO-8859-1';
+    $flags = $self->check_twig_options($flags);
     $self->{twig}= new XML::Twig(%{$flags});
     #$self->{twig}= new XML::Twig(%{$flags->{twig_flags}});
 }
@@ -664,11 +436,19 @@ sub get_structure {
         return $self->read_dtd($twig)
     }
     $record_tag = $twig->first_elt($record_tag) if $record_tag;
-#print $record_tag->gi,"\n" if $record_tag;
     $record_tag ||= $twig->root->first_child;
-#print $record_tag->gi,"\n";
-    #|| die "Can't find column $record_tag!". $@;
-#print $record_tag->path; exit;
+#print $record_tag->gi;
+#    if (!$record_tag) {
+#       $record_tag = $twig->root->first_child;
+#       if ( $record_tag
+#        and $record_tag->first_child
+#        and !$record_tag->contains_text
+#        and !$record_tag->first_child->contains_text
+#       ) {
+#          $record_tag = $record_tag->first_child;
+#       }
+#    }
+
     $self->{record_tag} = $record_tag;
     if ($self->{create}) {
         my $elt = $twig->root;
@@ -693,7 +473,7 @@ sub get_structure {
         my $newcolz = [];
         my %hashz;
         for (@$col_names) {
-            next unless m"/#PCDATA";
+            next unless m"/#PCDATA|/#CDATA";
             next if $hashz{$_};
             push @$newcolz, $_;
             $hashz{$_}++;
@@ -728,16 +508,16 @@ sub get_structure {
        $atts->{$t->path . '/'. $_} = $_ for keys %$ats;
     }
     @$col_names = (@att_col,@$col_names);
-    @$col_names = map {s"/#PCDATA""; $_}  @$col_names;
+    @$col_names = map {s"/#P*CDATA""; $_}  @$col_names;
     #print join "\n",@$col_names;
 
 ###z# print 2;
 #    $record_tag->set_att('record_tag__','true');
      $record_tag->set_att('record_tag__','true') if $record_tag->text =~/dummy__/;
+#     $record_tag->set_att('xstruct__','true') if $record_tag->text =~/dummy__/;
 #
     #if ($has_record_tag) { $twig->print; exit; } 
     return($record_tag,$col_names,$atts) if $has_record_tag;
-
 
     my $cols;
     @$cols = map {$_} @$col_names;
@@ -768,7 +548,8 @@ sub get_structure {
         $elt->set_att('record_tag__','true');
         $elt->paste('first_child',$par);
         $par->paste('before',$record_tag->parent);
-        $record_tag = $self->{record_tag} = $record_tag->parent->prev_sibling->first_child;
+#        $record_tag = $self->{record_tag} = $record_tag->parent->prev_sibling->first_child;
+        $record_tag ||= $self->{record_tag} = $record_tag->parent->prev_sibling->first_child;
     }
     else {
         for my $a(keys %$atts ) {
@@ -777,7 +558,8 @@ sub get_structure {
             $elt->set_att($a,'');
         }
 ###z# print 4;
-        $record_tag = $self->{record_tag} = $record_tag->prev_sibling;
+        $record_tag ||= $self->{record_tag} = $record_tag->prev_sibling;
+#        $record_tag = $self->{record_tag} = $record_tag->prev_sibling;
     }
     $record_tag ||= $twig->root->first_child;
     my $old = $record_tag->next_elt($record_tag->gi);
@@ -793,8 +575,108 @@ sub get_structure {
     #printf "\n%s\n   %s\n", $elt->path, "@$col_names";
     @$col_names = map {s"/#PCDATA""; $_}  @$col_names;
 #$twig->print;  print "\n\n";
-#print Dumper $record_tag->gi,$col_names,$atts;
+#use Data::Dumper; print Dumper $record_tag->gi,$col_names,$atts;
     return $record_tag,$col_names,$atts;
+}
+
+sub check_twig_options {
+    my $flags = shift;
+    my $new_flags;
+    my %twig_opt = %XML::Twig::valid_option;
+    return $flags unless scalar (keys %twig_opt);
+    while (my($k,$v) = each %$flags) {
+        $new_flags->{$k} = $v if $twig_opt{$k};
+    }
+    return $new_flags;
+}
+
+sub get_structure_from_map {
+    my $self = shift;
+    my $twig = shift;
+    my $col_map = shift;
+    my($amap,$map,$multi,$col_names,$pretty_cols,$col2tag);
+    for my $col(@$col_map) {
+        my($tag_name,$col_name) = ($col,$col);
+        ($tag_name,$col_name) = each %$col if ref $col eq 'HASH';
+        my($tname,$tparent) = ($tag_name,$tag_name);
+        if ($tname =~ m!(.*)/([^/]*)$! ) {
+            $tparent = $1;
+            $tname   = $2;
+            $tparent =~ s!.*/([^/]*)$!$1!;
+	}
+        my $tag  = $twig->first_elt($tname);
+        $tag_name=$tag->path if $tag;
+        if (!$tag) {
+            my $new_tag  = $twig->first_elt($tparent);
+            # die "No such element '$tname'!" unless $tag;
+            if (!$new_tag) {
+                $tag_name = $tname;
+	    }
+            else {
+                $tag_name=$new_tag->path . '/' . $tname;
+            }
+            $amap->{$tag_name}++;
+	}
+        if (ref $col_name eq 'ARRAY') {
+	  for my $col2(@$col_name) {
+              $col2tag->{$col2} = $tag_name;
+              $multi->{$tag_name}++;
+              push @$pretty_cols, $col2;
+	  }
+	}
+        push @$col_names, $tag_name;
+        push @$pretty_cols, $col_name unless ref $col_name eq 'ARRAY';
+        $map->{$tag_name} = $col_name;
+    }
+    my $record_tag;
+    my $record_tag_path = '';
+    for my $col(@$col_names) {
+        my($rt) = $col =~ m!(.*)/[^/]*$!;
+        next unless $rt;
+        $record_tag_path = $rt if length $rt > length $record_tag_path;
+    }
+    my @children = $twig->root->descendants;
+    for my $e(@children) {
+        next unless $e->path eq $record_tag_path;
+        $record_tag = $e;
+        last;
+    }
+    if (!$record_tag) {
+       $record_tag = $twig->root->first_child;
+       my $p = $record_tag->path;
+       @$col_names = map {$p.'/'.$_}@$col_names;
+#       use Data::Dumper; print Dumper $amap;
+       my $newmap;
+       $newmap->{ $p.'/'.$_ }++ for keys %{$amap};
+       $amap = $newmap;
+       $newmap = {};
+       $newmap->{ $p.'/'.$_ } = $map->{$_} for keys %{$map};
+       $map = $newmap;
+    }
+##
+=pod
+paste into parent record_tag__
+    my $rt_atts = $record_tag->atts;
+    if (!$rt_atts->{record_tag__}) {
+       my $new_rt = $record_tag->copy;
+       $new_rt->set_att('record_tag__','1');
+       $new_rt->set_att('xstruct__','1');
+       $new_rt->paste('first_child',$record_tag->parent);
+       $record_tag = $new_rt;
+    }
+=cut
+    my $col_structure = {
+        amap => $amap,
+        map  => $map,
+        multi => $multi,
+        col_names => $col_names,
+        pretty_cols => $pretty_cols,
+        col2tag     => $col2tag,
+    };
+# print $record_tag->path, "\n";
+# use Data::Dumper; print Dumper $col_structure; 
+# exit;
+    return $record_tag, $col_structure;
 }
 
 sub get_data {
@@ -806,7 +688,10 @@ sub get_data {
     }
     my $col_names = shift || [];
     $col_names = []; #### IGNORE USER COLUMN NAMES FOR NOW
-    my $flags = $self;
+    my $flags;
+    while (my($k,$v)=each %$self) {
+        $flags->{$k}=$v;
+    }
     my $root_tag            = $flags->{root_tag};
     my $depth_limit         = $flags->{depth_limit};
     my $supplied_col_names  = $flags->{col_names};
@@ -820,8 +705,16 @@ sub get_data {
     my %amap;
     $flags->{LoadDTD} = 1;
     $flags->{TwigRoots} = {$root_tag=>'1'} if $root_tag;
-    $flags->{KeepEncoding}     ||= 1;
+#
+# DEFAULTS : KeepEncoding OFF to mirror XML::Twig
+#            ProtocolEncoding 'ISO-8859-1'
+#
+#    $flags->{KeepEncoding}     ||= 1;
+#
     $flags->{ProtocolEncoding} ||= 'ISO-8859-1';
+#use Data::Dumper; die Dumper $flags;
+    $flags = check_twig_options($flags);
+
     my $twig= new XML::Twig(%{$flags});
     my $success = $twig->safe_parse($fh_or_str);
     $self->{errstr} = $@ unless $success;
@@ -831,20 +724,44 @@ sub get_data {
     my $root = $twig->first_elt($root_tag) || $twig->root;
     my $name = $root->path;
     my $element= $twig->root;
-    my($record_tag,$colZ,$atts) = $self->get_structure($twig);
-    if (!$col_structure) {
-        $have_col_names++;
-        $col_structure = build_column_names($colZ,$root,$root_tag,$colZ);
-        $col_structure->{amap} = $atts;
+    my($record_tag,$colZ,$atts);
+
+    my $col_map = $self->{col_map};
+    if ($col_map) {
+      ($record_tag,$col_structure) =
+          $self->get_structure_from_map($twig,$col_map);
+    } 
+    else {
+      ($record_tag,$colZ,$atts) = $self->get_structure($twig);
+      if (!$col_structure) {
+          $have_col_names++;
+          $col_structure = build_column_names($colZ,$root,$root_tag,$colZ);
+          $col_structure->{amap} = $atts;
+        }
     }
-    #$twig->print;
-    #use Data::Dumper; print Dumper $col_structure;
+
+    # CREATE A DUMMY RECORD TAG
+    #
+    my $rt_atts = $record_tag->atts;
+    if (!$rt_atts->{record_tag__}) {
+       my $new_rt = $record_tag->copy;
+       $new_rt->set_att('record_tag__','1');
+       $new_rt->set_att('xstruct__','1');
+       $new_rt->paste('first_child',$record_tag->parent);
+       $record_tag = $new_rt;
+    }
+
+    # $twig->print;
+    # use Data::Dumper; print Dumper $col_structure;
+  #  print $self->{record_tag}->path;
+
     $self->{record_tag}    = $record_tag;
     $self->{twig}          = $twig;
     $self->{col_names}     = $col_structure->{pretty_cols};
     $self->{col_structure} = $col_structure;
     return 1;
 }
+
 
 ###############################################################
 # MAP A ROW HASH ONTO A COLUMN NAMES ARRAY
@@ -943,55 +860,6 @@ sub build_column_names {
 }
 ###############################################################
 
-sub process_element {
-    my $self = shift;
-    my $element   = shift;
-    my $depth_limit = shift;
-    my $row       = shift || {};
-    my $cols      = shift || [];
-    my $amap      = shift || {};
-    my $visited   = shift;
-#    my $p = $self->{record_tag}->parent->path;
-    return if !$element 
-           or $element->is_text
-;#           or $element->path !~ /^$p/ ;
-    return if $depth_limit and $element->level > $depth_limit;
-    my $name = $element->path ; # $element->gi;
-#print "$name\n"; 
-#return( $row,$cols,$element,$amap,$element->next_sibling);
-    my $text = $element->text;
-    if ($element->atts) {
-      for (keys %{$element->atts}) {
-        $row->{$name.'/'.$_} = $element->att($_);
-        push @$cols, $name.'/'.$_;
-        push @{ $amap->{$name}}, $name.'/'.$_;
-      }
-    }
-    if ($row->{$name} and $element->contains_text) {
-        if (ref $row->{$name} eq 'ARRAY') {
-            push(  @{$row->{$name}}, $text );
-        }
-        else {
-      	    $row->{$name} = [$row->{$name},$text];
-        }
-    }
-    else {
-#print "[$name]\n" if $element->contains_text;
-        $row->{$name} = $text if $element->contains_text;
-        push @$cols, $name if $element->contains_text;
-    }
-#    if ($visited->{$name}) {
-#print $name,"[",$visited->{$name},"]",Dumper $row;
-#        return( $row,$cols,$element,$amap,$visited );
-#      }
-#    if (!$visited->{$name}) {
-#    $visited->{$name}++;
-    $self->process_element($_,$depth_limit,$row,$cols,$amap,$visited) for $element->children;
-#  }
-#print Dumper $row if $self->{cur_state};
-    return( $row,$cols,$element,$amap );
-}
-
 sub export {
     my $self = shift;
     my $storage = shift;
@@ -1018,7 +886,8 @@ sub export {
     my $rectag = $self->{record_tag};
 #    $self->{twig}->first_elt($self->{record_tag}->gi)->delete;
     my $elt= $self->{twig}->root;
-# $self->{destroy}= 0;
+# $self->{destroy}= 1;
+#print "FOO";
     if ( $self->{destroy}) {
         for my $e($elt->descendants) {
             if ( $e->att('xstruct__') ) {
@@ -1121,7 +990,6 @@ will be built automatically.  However, you can also fine tune the
 generation of the database by specifying which tags and attributes
 you are interested in and their relationship with database columns.
 
-
 =head1 USAGE
 
 =head2 Prerequisites
@@ -1144,13 +1012,10 @@ structure from examining the file or data itself, making use of the DTD if there
 
 =head2 Optional flags
 
- The XML format does not allow you to specify column names as a flag,
- rather you specify a "record_tag" and the column names are determined
- from the contents of the tag.  If no record_tag is specified, the
- record tag will be assumed to be the first child of the root of the
- XML tree.  That child and its structure will be determined from the
- DTD if there is one, or from the first occurring record if there is
- no DTD.
+ If the default behavior is not sufficient, you may either specify a
+ "record_tag" which will be used to define column names, or you can define an
+ entire tag-to-column mapping.
+
 
 For simple XML, no flags are necessary:
 
@@ -1179,6 +1044,26 @@ If the record_tag is not the first child, you will need to specify it.  For exam
 
 In this case you will need to specify "row" as the record_tag since it is not the first child of the tree.  The column names will be generated from the attributes of row's parent (if the parent is not the root), from row's attributes
 and sub tags, i.e. "table_id","row_id","name","location".
+
+In some cases you will need to specify an entire tag-to-column mapping.  For example, if you want to use a different name for the database column than is used in the XML (especially if the XML tag is not a valid SQL column name).  You'd also need to specify a mapping if there are two tags with the same name in different places in the XML tree.
+
+The column mapping is a reference to an array of column definitions.  A column definition is either a simple name of a tag, or a hash reference with the key containing the full path of the XML tag and the value containing the desired column name alias.
+
+For example:
+
+  col_map => [ 'part_id', 'part_name', 'availability' ];
+
+That will find the first three tags with those names and create the database using the same names for the tags.
+
+Or:
+
+  col_map => [
+               { '/parts/shop/id'        => 'shop_id'},
+               { '/parts/shop/part/id'   => 'part_id'},
+               { '/parts/shop/part/name' => 'part_name'},
+             ];
+
+That would find the three tags referenced on the left and create a database with the three column names referenced on the right.
 
 When exporting XML, you can specify a DTD to control the output.  For example, if you import a table from CSV or from an Array, you can output as XML and specify which of the columns become tags and which become attributes and also specify the nesting of the tags in your DTD.
 

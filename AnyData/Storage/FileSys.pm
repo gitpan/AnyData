@@ -24,11 +24,11 @@ sub new {
     $self->{index} = 0;
     return $self;
 }
+sub is_deleted {}
 
 sub get_data {
     my $self = shift;
-    my $dirs = shift;
-use Data::Dumper; print "!",Dumper $dirs; exit;
+    my $dirs = shift || $self->{dirs};
     my @col_names = @{ $self->{col_names} };
     my $table = [];
     my @files = $self->get_filename_parts;
@@ -47,6 +47,7 @@ use Data::Dumper; print "!",Dumper $dirs; exit;
         # 'fullpath,file_name,path,ext,size,'
         # 'name,artist,album,year,comment,genre';
     }
+    #use Data::Dumper; print "!",Dumper $table; exit;
     return $table;
 }
 

@@ -9,7 +9,7 @@ package AnyData::Storage::PassThru;
 #########################################################################
 use strict;
 use vars qw($VERSION @ISA);
-$VERSION = '0.01';
+
 use AnyData::Storage::File;
 @ISA = qw( AnyData::Storage::File);
 sub file2str          { 1 }

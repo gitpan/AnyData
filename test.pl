@@ -1,9 +1,23 @@
 #!/usr/local/bin/perl -w
 $|++;
 use strict;
+my @formats = qw(CSV Pipe Tab Fixed Paragraph ARRAY);
+eval {
+  require XML::Parser;
+  require XML::Twig;
+};
+unshift @formats,'XML' unless $@;
+undef $@;
+eval {
+  require HTML::Parser;
+  require HTML::TableExtract;
+  require CGI;
+};
+push @formats,'HTMLtable' unless $@;
+
 for my $driver('AnyData') {
   print "\n$driver\n";
-  for my $format(qw(XML CSV Pipe Tab Fixed Paragraph HTMLtable ARRAY)) {
+  for my $format( @formats ) {
       printf  "  %10s ... ", $format;
       printf "%s!\n" , test($driver,$format);
   }

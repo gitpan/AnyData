@@ -11,7 +11,6 @@ use strict;
 
 use vars qw($VERSION $DEBUG);
 
-$VERSION = '0.01';
 $DEBUG   = 1;
 use Data::Dumper;
 use AnyData::Storage::File;
@@ -100,18 +99,23 @@ sub open_table {
             for my $line( @tmp ) {
                 #        for (split  /$rec_sep/, $data) {
                 #            s/\015$//g;  # ^M = CR from DOS
+                next if $parser->{skip_pattern} and $line =~ $parser->{skip_pattern};
                 my @row = $parser->read_fields($line);
                 #print $_;
                 #use Data::Dumper; print Dumper \@row;
-### MOD
+###z MOD
  #               next unless scalar @row;
-###
-                push @$table_ary, \@row ; 
-                    # unless $_ =~ m/$self->{del_marker}$/;
+ #               push @$table_ary, \@row;
+                 push @$table_ary, \@row
+#                    unless $parser->{skip_mark}
+#                       and $row[0] eq $parser->{skip_mark};
+#
             }
         }
         if ((ref $parser) !~ /Fixed|Paragraph/ 
-          && !$parser->{keep_first_line}) {
+          && !$parser->{keep_first_line}
+          && !$parser->{col_names}
+           ) {
            $col_names = shift @$table_ary;
 	 }
         #use Data::Dumper; die Dumper $table_ary;
@@ -182,7 +186,7 @@ sub export {
     my $parser = shift;
     print "##";
     return unless $parser->{export_on_close} && $self->{open_mode} ne 'r';
-    return $parser->export( $self->{records}, $self->{col_names} );
+#    return $parser->export( $self->{records}, $self->{col_names}, $self->{deleted} );
     #$self->{file_manager}->str2file($str);
 }
 
@@ -244,12 +248,13 @@ sub seek_first_record { shift->{index}=0 }
 
 sub get_pos { my $s=shift; $s->{CUR}= $s->{index}}
 sub go_pos {my $s=shift;$s->{index}=$s->{CUR}}
+
+sub is_deleted { my $s=shift; return $s->{deleted}->{$s->{index}-1} };
+
 sub delete_record {
     my $self = shift;
-#$self->go_pos;
-    $self->{records}->[ $self->{index}-1 ]->[-1] = $self->{del_marker};
-#print Dumper $self->{records}->[ $self->{index} ];
-#use Data::Dumper; print Dumper $self; exit;
+#    $self->{records}->[ $self->{index}-1 ]->[-1] = $self->{del_marker};
+    $self->{deleted}->{ $self->{index}-1 }++;
 }
 
 ##################################

@@ -58,8 +58,10 @@ use strict;
 use AnyData::Format::Base;
 use AnyData::Storage::FileSys;
 use AnyData::Storage::File;
-use vars qw( @ISA );
+use vars qw( @ISA $VERSION);
 @AnyData::Format::Mp3::ISA = qw( AnyData::Format::Base );
+
+$VERSION = '0.05';
 
 sub new {
     my $class = shift;
