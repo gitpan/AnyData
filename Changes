@@ -6,6 +6,10 @@ Documentation and most recent version available at:
 
 Revision history for Perl extension AnyData.
 
+version 0.07, released 25 October 2003
+ 
+ Storage/PassThru.pm : added version number (thanks Randal Schwartz)
+
 version 0.06, released 25 October 2003
 
  test.pl : omitted XML & HTMLtable tests
