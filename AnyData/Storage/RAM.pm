@@ -11,6 +11,8 @@ use strict;
 
 use vars qw($VERSION $DEBUG);
 
+$VERSION = '0.08';
+
 $DEBUG   = 1;
 use Data::Dumper;
 use AnyData::Storage::File;
