@@ -14,7 +14,7 @@ use vars qw( @ISA @EXPORT $VERSION );
 @EXPORT = qw(  adConvert adTie adRows adColumn adExport adDump adNames adFormats);
 #@EXPORT = qw(  ad_fields adTable adErr adArray);
 
-$VERSION = '0.08';
+$VERSION = '0.09';
 
 sub new {
    my $class   = shift;
@@ -364,6 +364,11 @@ sub get_undeleted_record {
         last;
     }
     return $rec;
+#    return $rec if ref $rec eq 'ARRAY';
+#    return unless $rec;
+#    my @fields = $self->{parser}->read_fields($rec);
+#    return undef if scalar @fields == 1 and !defined $fields[0];
+#    return \@fields;
 }
 sub update_single_row {
     my $self     = shift;
@@ -645,9 +650,19 @@ sub adConvert {
         my $target_ad = adTable(
             $target_format,$target_file_name,'o',undef,$target_flags
         );
-        if (ref $source_data) {
+#        if (ref $source_data) {
+        if ($data_type eq 'ARRAY' ) {
             for my $row(@$source_data) {
-                $target_ad->push_row(@$row);
+#               $target_ad->push_row(@$row);
+             my @rec;
+             if (ref $row eq 'ARRAY') {
+                  @rec = @$row;
+	      }
+              else {
+                  @rec = $source_ad->{parser}->read_fields($row);
+	      }
+              $target_ad->push_row(@rec);
+#
             }
             return $target_ad->export($target_file_name);
         }
@@ -887,7 +902,7 @@ DBI, DBD::AnyData, SQL::Statement and DBD::File installed.
 
  With the exception of the XML, HTMLtable, and ARRAY formats, the
  adTie() command saves all modifications of the data directly to file
- as they are made.  With XML and HTMLtable, you must make your 
+ as they are made.  With XML and HTMLtable, you must make your
  modifications in memory and then explicitly save them to file with
  adExport().
 
@@ -918,10 +933,10 @@ The hash reference resulting from adTie() can be accessed and modified as follow
    print $row->{$col1} if $row->{$col2} ne 'baz';
  }
 
-The thing returned by adTie ($table in the example) is not an object, 
+The thing returned by adTie ($table in the example) is not an object,
 it is a reference to a tied hash. This means that hash operations
 such as exists, values, keys, may be used, keeping in mind that this
-is a *reference* to a tied hash so the syntax would be 
+is a *reference* to a tied hash so the syntax would be
 
     for( keys %$table ) {...}
     for( values %$table ) {...}
@@ -955,7 +970,7 @@ The $flags parameter allows you to specify additional information such as column
 
 With the exception of the XML, HTMLtable, and ARRAY formats, the
 adTie() command saves all modifications of the data directly to file
-as they are made.  With XML and HTMLtable, you must make your 
+as they are made.  With XML and HTMLtable, you must make your
 modifications in memory and then explicitly save them to file with
 adExport().
 
@@ -1072,7 +1087,7 @@ This method returns an array of values taken from the specified column.
 If there is a distinct_flag parameter, duplicates will be eliminated
 from the list.
 
-For example, this snippet returns a unique list of the values in 
+For example, this snippet returns a unique list of the values in
 the 'player' column of the table.
 
   my $game = adTie( 'Pipe','games.db' );
@@ -1098,7 +1113,7 @@ This method shows the available format parsers, e.g. 'CSV', 'XML', etc.  It look
 Column names may be assigned in three ways:
 
  * pre  -- The format parser pre-assigns column
-           names (e.g. Passwd files automatically have 
+           names (e.g. Passwd files automatically have
            columns named 'username', 'homedir', 'GID', etc.).
 
  * user -- The user specifies the column names as a comma
@@ -1115,16 +1130,16 @@ Column names may be assigned in three ways:
            the file is treated as a list of column names;
            the line is parsed according to the specific
            format (e.g. CSV column names are a comma-separated
-           list, Tab column names are a tab separated list); 
+           list, Tab column names are a tab separated list);
 
-When creating a new file in a format that does not pre-assign 
+When creating a new file in a format that does not pre-assign
 column names, the user *must* manually assign them as shown above.
 
 Some formats have special rules for assigning column names (XML,Fixed,HTMLtable), see the sections below on those formats.
 
 =head2 Key Columns
 
-The AnyData modules support tables that have a single key column that 
+The AnyData modules support tables that have a single key column that
 uniquely identifies each row as well as tables that do not have such
 keys.  For tables where there is a unique key, that key may be assigned
 in three ways:
@@ -1147,8 +1162,8 @@ in three ways:
 
 =head2 Format Specific Details
 
- For full details, see the documentation for AnyData::Format::Foo 
- where Foo is any of the formats listed in the adFormats() command 
+ For full details, see the documentation for AnyData::Format::Foo
+ where Foo is any of the formats listed in the adFormats() command
  e.g. 'CSV', 'XML', etc.
 
  Included below are only some of the more important details of the
@@ -1251,7 +1266,7 @@ The XML format parser is built on top of Michel Rodriguez's excellent XML::Twig 
  The table_flags will default to {Border=>1,bgColor=>'white'} if none
  are specified.
 
- The top_row_flags will default to {bgColor=>'#c0c0c0'} if none are 
+ The top_row_flags will default to {bgColor=>'#c0c0c0'} if none are
  specified;
 
  The data_row_flags will be empty if none are specified.
@@ -1270,7 +1285,7 @@ The XML format parser is built on top of Michel Rodriguez's excellent XML::Twig 
 
 =head2 Multiple Row Operations
 
-The AnyData hash returned by adTie() may use either single values as keys, or a reference to a hash of comparisons as a key.  If the key to the hash is a single value, the hash operates on a single row but if the key to the hash is itself a hash reference, the hash operates on a group of rows. 
+The AnyData hash returned by adTie() may use either single values as keys, or a reference to a hash of comparisons as a key.  If the key to the hash is a single value, the hash operates on a single row but if the key to the hash is itself a hash reference, the hash operates on a group of rows.
 
  my $num_deleted = delete $table->{Sue};
 
@@ -1374,8 +1389,8 @@ Here is what the user supplied open modes actually do:
 
 When you use something like "my $table = adTie(...)", it opens
 the file with a lock and leaves the file and lock open until
-1) the hash variable ($table) goes out of scope or 2) the 
-hash is undefined (e.g. "undef $table") or 3) the hash is 
+1) the hash variable ($table) goes out of scope or 2) the
+hash is undefined (e.g. "undef $table") or 3) the hash is
 re-assigned to another tie.  In all cases the file is closed
 and the lock released.
 

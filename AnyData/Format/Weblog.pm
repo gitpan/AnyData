@@ -26,11 +26,11 @@ AnyData::Format::Weblog - tiedhash & DBI/SQL access to HTTPD Logs
  my $hits = $dbh->selectall_arrayref( qq{
      SELECT remotehost FROM hits WHERE request LIKE '%mypage.html%'
  });
- # ... other DBI/SQL operations
+ # ... other DBI/SQL read operations
 
 =head1 DESCRIPTION
 
-This is a plug-in format parser for the AnyData and DBD::AnyData modules. You can gain access to Common Log Format files web server log files (e.g. NCSA or Apache) either through tied hashes or arrays or through SQL database queries.
+This is a plug-in format parser for the AnyData and DBD::AnyData modules. You can gain read access to Common Log Format files web server log files (e.g. NCSA or Apache) either through tied hashes or arrays or through SQL database queries.
 
 Fieldnames are taken from the W3 definitions found at
 
@@ -49,6 +49,8 @@ In addition, two extra fields that may be present in extended format logfiles ar
  referer
  client
 
+This module does not currently support writing to weblog files.
+
 Please refer to the documentation for AnyData.pm and DBD::AnyData.pm
 for further details.
 
@@ -66,7 +68,7 @@ use vars qw( @ISA $DEBUG $VERSION);
 @AnyData::Format::Weblog::ISA = qw( AnyData::Format::Base );
 $DEBUG = 0;
 
-$VERSION = '0.05';
+$VERSION = '0.06';
 
 sub new {
     my $class = shift;

@@ -1,10 +1,10 @@
 AnyData - easy access to data in many formats
 
-Documentation and most recent version available at:
-
-    http://www.vpservices.com/jeff/programs/AnyData/
-
 Revision history for Perl extension AnyData.
+
+version 0.09, released 18 April 2004
+
+ fixed adConvert - many thanks to Dan Wright for a patch
 
 version 0.08, released 25 October 2003
  
