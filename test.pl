@@ -2,6 +2,9 @@
 $|++;
 use strict;
 my @formats = qw(CSV Pipe Tab Fixed Paragraph ARRAY);
+
+=pod
+
 eval {
   require XML::Parser;
   require XML::Twig;
@@ -14,6 +17,8 @@ eval {
   require CGI;
 };
 push @formats,'HTMLtable' unless $@;
+
+=cut
 
 for my $driver('AnyData') {
   print "\n$driver\n";

@@ -6,6 +6,10 @@ Documentation and most recent version available at:
 
 Revision history for Perl extension AnyData.
 
+version 0.06, released 25 October 2003
+
+ test.pl : omitted XML & HTMLtable tests
+
 version 0.05, released 17 July, 2001
 
  There are major changes in the way the tied hash interface
