@@ -1,0 +1,1 @@
+<table>t/htmltable.out <tr bgcolor="#c0c0c0"><th>word</th> <th>number</th></tr> <tr><td>one</td> <td>1</td></tr> <tr><td>two</td> <td>2</td></tr> <tr><td>three</td> <td>3</td></tr> <tr><td>unknown</td></tr> <tr><td>unknowncomma</td> <td>&nbsp;</td></tr> <tr><td>zero</td> <td>&nbsp;</td></tr></table>
