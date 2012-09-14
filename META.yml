@@ -6,7 +6,6 @@ author:
 build_requires:
   Test::More: 0.9
   Test::Output: 0.01
-  Test::Pod::Spelling::CommonMistakes: 1.000
 configure_requires:
   ExtUtils::MakeMaker: 6.30
 dynamic_config: 1
@@ -24,4 +23,4 @@ requires: {}
 resources:
   homepage: http://github.com/SvenDowideit/Data-Foswiki
   repository: git://github.com/SvenDowideit/Data-Foswiki.git
-version: 0.10_51TRIAL
+version: 0.10_52TRIAL
