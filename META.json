@@ -36,12 +36,12 @@
          "requires" : {}
       }
    },
-   "release_status" : "testing",
+   "release_status" : "stable",
    "resources" : {
       "homepage" : "http://github.com/SvenDowideit/Data-Foswiki",
       "repository" : {
          "url" : "git://github.com/SvenDowideit/Data-Foswiki.git"
       }
    },
-   "version" : "0.10_52TRIAL"
+   "version" : "0.11"
 }
